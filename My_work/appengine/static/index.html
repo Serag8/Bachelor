@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Bachelor</title>
+  <script src="acorn.js"></script>
+  <script src="interpreter.js"></script>
+  <script src="storage.js"></script>
+  <script src="blockly_compressed.js"></script>
+  <script src="blocks_compressed.js"></script>
+  <script src="javascript_compressed.js"></script>
+  <script src="python_compressed.js"></script>
+  <script src="en.js"></script>
+  <style>
+    body {
+      background-color: #fff;
+      font-family: sans-serif;
+    }
+    h1 {
+      font-weight: normal;
+      font-size: 140%;
+    }
+    table {
+    width:100%;
+    }
+    table, th, td {
+      border: 1px solid black;
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 5px;
+      text-align: left;
+    }
+    table tr:nth-child(even) {
+      background-color: #eee;
+    }
+    table tr:nth-child(odd) {
+      background-color:#fff;
+    }
+    table th  {
+      background-color: black;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <h1>Editor</h1>
+  <script>
+    if ('BlocklyStorage' in window) {
+      BlocklyStorage.HTTPREQUEST_ERROR = 'There was a problem with the request.\n';
+      BlocklyStorage.LINK_ALERT = 'Share your blocks with this link:\n\n%1';
+      BlocklyStorage.HASH_ERROR = 'Sorry, "%1" doesn\'t correspond with any saved Blockly file.';
+      BlocklyStorage.XML_ERROR = 'Could not load your saved file.\n'+
+          'Perhaps it was created with a different version of Blockly?';
+    } else {
+      document.write('<p id="sorry">Sorry, cloud storage is not available.</p>');
+    }
+  </script>
+  <p>
+    <button onclick="BlocklyStorage.link()">Save Blocks</button>
+  </p>
+  <p>
+    <button onclick="parseCode()">Parse Code</button>
+    <button onclick="backStepCode2()" id="backStepButton" disabled="disabled">Back</button>
+    <button onclick="stepCode2()" id="stepButton" disabled="disabled">Step</button>
+  </p>
+
+  <div id="blocklyDiv" style="height: 480px; width: 760px; float: left;"></div>
+  
+  <div id="traceDiv" style="width: 400px; float: right;">
+    <table id="trace">
+      <tr>
+        <th>Variable Name</th>
+        <th>Variable Value</th>
+      </tr>
+    </table>
+  </div>
+
+  <div id="printDiv" style="width: 400px; float: right;"></div>
+
+  <xml id="toolbox" style="display: none">
+    <category name="Logic">
+      <block type="controls_if"></block>
+      <block type="logic_compare"></block>
+      <block type="logic_operation"></block>
+      <block type="logic_negate"></block>
+      <block type="logic_boolean"></block>
+    </category>
+    <category name="Loops">
+      <block type="controls_repeat_ext">
+        <value name="TIMES">
+          <block type="math_number">
+            <field name="NUM">10</field>
+          </block>
+        </value>
+      </block>
+      <block type="controls_whileUntil"></block>
+    </category>
+    <category name="Math">
+      <block type="math_number"></block>
+      <block type="math_arithmetic"></block>
+      <block type="math_single"></block>
+    </category>
+    <category name="Text">
+      <block type="text"></block>
+      <block type="text_length"></block>
+      <block type="text_print"></block>
+      <!--<block type="get"></block> -->
+      <block type="text_prompt_ext">
+        <value name="TEXT">
+          <block type="text"></block>
+        </value>
+      </block>
+    </category>
+    <category name="Lists">
+      <block type="lists_create_empty"></block>
+      <block type="lists_create_with"></block>
+      <block type="lists_repeat">
+        <value name="NUM">
+          <block type="math_number">
+            <field name="NUM">5</field>
+          </block>
+        </value>
+      </block>
+      <block type="lists_length"></block>
+      <block type="lists_isEmpty"></block>
+      <block type="lists_indexOf">
+        <value name="VALUE">
+          <block type="variables_get">
+            <field name="VAR" class="listVar">...</field>
+          </block>
+        </value>
+      </block>
+      <block type="lists_getIndex">
+        <value name="VALUE">
+          <block type="variables_get">
+            <field name="VAR" class="listVar">...</field>
+          </block>
+        </value>
+      </block>
+      <block type="lists_setIndex">
+        <value name="LIST">
+          <block type="variables_get">
+            <field name="VAR" class="listVar">...</field>
+          </block>
+        </value>
+      </block>
+      <block type="lists_getSublist">
+        <value name="LIST">
+          <block type="variables_get">
+            <field name="VAR" class="listVar">...</field>
+          </block>
+        </value>
+      </block>
+      <block type="lists_split">
+        <value name="DELIM">
+          <block type="text">
+            <field name="TEXT">,</field>
+          </block>
+        </value>
+      </block>
+    </category>
+    <category name="Variables" custom="VARIABLE"></category>
+    <!--<category name="Functions" custom="PROCEDURE"></category>-->
+  </xml>
+
+  <script>
+    // Blockly.Blocks['get'] = {
+    //   init: function() {
+    //     this.setHelpUrl('');
+    //     this.setColour(150);
+    //     this.appendValueInput("NAME")
+    //        .setCheck("String")
+    //        .appendField("Get");
+    //     this.setInputsInline(true);
+    //     this.setPreviousStatement(true);
+    //     this.setNextStatement(true);
+    //     this.setTooltip('this is a get statement');
+    //   }
+    // };
+    // Blockly.JavaScript['get'] = function(block) {
+    //   var value_name = Blockly.JavaScript.valueToCode(block, 'NAME', Blockly.JavaScript.ORDER_ATOMIC);
+    //   var code = 'window.prompt('insert a value for ' + value_name)';
+    //   return code;
+    // };
+    Blockly.inject(document.getElementById('blocklyDiv'),
+        {toolbox: document.getElementById('toolbox')});
+
+    var myInterpreter = null;
+    var moves = 0;
+
+    function initApi(interpreter, scope) {
+      // Add an API function for the alert() block.
+      var wrapper = function(text) {
+        text = text ? text.toString() : '';
+        document.getElementById("printDiv").innerHTML = document.getElementById("printDiv").innerHTML + "\n" + "<p>Printed to console: " + text +"</p>"
+        return /*interpreter.createPrimitive(alert(text))*/;
+      };
+      interpreter.setProperty(scope, 'alert',
+          interpreter.createNativeFunction(wrapper));
+
+      // Add an API function for the prompt() block.
+      var wrapper = function(text) {
+        text = text ? text.toString() : '';
+        return interpreter.createPrimitive(prompt(text));
+      };
+      interpreter.setProperty(scope, 'prompt',
+          interpreter.createNativeFunction(wrapper));
+
+      // Add an API function for highlighting blocks.
+      var wrapper = function(id) {
+        id = id ? id.toString() : '';
+        return interpreter.createPrimitive(highlightBlock(id));
+      };
+      interpreter.setProperty(scope, 'highlightBlock',
+          interpreter.createNativeFunction(wrapper));
+    }
+
+    var highlightPause = false;
+
+    function highlightBlock(id) {
+      Blockly.mainWorkspace.highlightBlock(id);
+      highlightPause = true;
+    }
+
+    function parseCode() {
+      // Generate JavaScript code and parse it.
+      var codepy = Blockly.Python.workspaceToCode();
+      Blockly.JavaScript.STATEMENT_PREFIX = 'highlightBlock(%1);\n';
+      Blockly.JavaScript.addReservedWords('highlightBlock');
+      var code = Blockly.JavaScript.workspaceToCode();
+      myInterpreter = new Interpreter(code, initApi);
+
+      alert('Ready to execute this code:\n\n' + codepy);
+      document.getElementById('stepButton').disabled = '';
+      document.getElementById('backStepButton').disabled = 'disabled';
+      highlightPause = false;
+      document.getElementById("printDiv").innerHTML = "";
+      document.getElementById("trace").innerHTML = "<table id=\"trace\">\
+      <tr>\
+        <th>Variable Name</th>\
+        <th>Variable Value</th>\
+      </tr>\
+    </table>"
+      Blockly.mainWorkspace.traceOn(true);
+      Blockly.mainWorkspace.highlightBlock(null);
+    }
+
+    function stepCode2() {
+      stepCode();
+      if(document.getElementById('stepButton').disabled == ''){
+        //refresh tracing table
+        document.getElementById("trace").innerHTML = "<table id=\"trace\">\
+      <tr>\
+        <th>Variable Name</th>\
+        <th>Variable Value</th>\
+      </tr>\
+    </table>"
+      }
+      var variableDB = Blockly.Variables.allVariables(Blockly.mainWorkspace);
+      for (var i = 0; i < variableDB.length; i++) {
+        var value = myInterpreter.getValueFromScope(variableDB[i].toString()); 
+        addRow("trace", variableDB[i].toString(), value);
+      };
+      addRow("trace", "----Step----", "number #" + moves.toString());
+    }
+
+    function backStepCode2() {
+      document.getElementById("printDiv").innerHTML = "";
+      backStepCode();
+      document.getElementById("trace").innerHTML = "<table id=\"trace\">\
+      <tr>\
+        <th>Variable Name</th>\
+        <th>Variable Value</th>\
+      </tr>\
+    </table>"
+      var variableDB = Blockly.Variables.allVariables(Blockly.mainWorkspace);
+      for (var i = 0; i < variableDB.length; i++) {
+        var value = myInterpreter.getValueFromScope(variableDB[i].toString()); 
+        addRow("trace", variableDB[i].toString(), value);
+      };
+      addRow("trace", "----Step----", "number #" + moves.toString());
+    }
+    function stepCode() {
+      try {
+        var ok = myInterpreter.step();
+      } finally {
+        if (!ok) {
+          // Program complete, no more code to execute.
+          document.getElementById('stepButton').disabled = 'disabled';
+          document.getElementById("printDiv").innerHTML = document.getElementById("printDiv").innerHTML + "---Reached end of code---"
+          /*var variableDB = Blockly.Variables.allVariables(Blockly.mainWorkspace);
+          for (var i = variableDB.length - 1; i >= 0; i--) {
+            var value = myInterpreter.getValueFromScope(variableDB[i].toString()); 
+            addRow("trace", variableDB[i].toString(), value);
+          };*/
+          return;
+        }
+      }
+      if (highlightPause) {
+        // A block has been highlighted.  Pause execution here.
+        highlightPause = false;
+        moves++;
+        var variableDB = Blockly.Variables.allVariables(Blockly.mainWorkspace);
+          for (var i = variableDB.length - 1; i >= 0; i--) {
+            var value = myInterpreter.getValueFromScope(variableDB[i].toString()); 
+            addRow("trace", variableDB[i].toString(), value);
+          };
+        document.getElementById('backStepButton').disabled = '';
+      } else {
+        // Keep executing until a highlight statement is reached.
+        stepCode();
+      }
+    }
+    if ('BlocklyStorage' in window && window.location.hash.length > 1) {
+      BlocklyStorage.retrieveXml(window.location.hash.substring(1));
+    }
+
+    function backStepCode() {
+      // for back button
+      //window.alert('into backStepCode');
+      if(moves == 0) {
+        //window.alert('into backStepCode if');
+        document.getElementById('backStepButton').disabled = 'disabled';
+        return;
+      }
+      //window.alert('into backStepCode before parse');
+      moves --;
+      var codejs = Blockly.JavaScript.workspaceToCode();
+      Blockly.JavaScript.STATEMENT_PREFIX = 'highlightBlock(%1);\n';
+      Blockly.JavaScript.addReservedWords('highlightBlock');
+      var code = Blockly.JavaScript.workspaceToCode();
+      myInterpreter = new Interpreter(code, initApi);
+
+      //alert('Ready to execute this code:\n\n' + codejs);
+      document.getElementById('stepButton').disabled = '';
+      document.getElementById('backStepButton').disabled = '';
+      highlightPause = false;
+      Blockly.mainWorkspace.traceOn(true);
+      Blockly.mainWorkspace.highlightBlock(null);;
+      //window.alert('into backStepCode after parse');
+      var limit = moves;
+      for (var i=0; i<limit; i++) {
+        stepCode();
+        //alert('i:' + i + '\n' + 'moves:' + limit);
+      }
+      moves = limit;
+    }
+    function addRow(tableID, varname, value) {
+      // Get a reference to the table
+      var tableRef = document.getElementById(tableID);
+      var newRow   = tableRef.insertRow(tableRef.rows.length);
+      var newCell  = newRow.insertCell(0);
+      var newText  = document.createTextNode(varname);
+      newCell.appendChild(newText);
+      newCell2 = newRow.insertCell(1);
+      newText2 = document.createTextNode(value);
+      newCell2.appendChild(newText2);
+    }
+    //delete the specified row and insert a new one
+    // var variableDB = Blockly.Variables.allVariables(Blockly.mainWorkspace);
+    // var example = "";
+    // for (var i = variableDB.length - 1; i >= 0; i--) {
+    //   example += variableDB[i].toString();
+    // };
+    // addRow("trace", example, "0");
+
+    // function variable(varname, value) {
+    //   var obj = {
+    //     varname: varname,
+    //     value: value
+    //   }
+    //   addRow("trace", varname, value)
+    // }
+  </script>
+</body>
+</html>
